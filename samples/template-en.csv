@@ -1,0 +1,5 @@
+﻿Type,Date,Product,Quantity,Unit price,Unit cost,Amount,Category,Expense start,Expense end,Status,Note,Transaction ID,Total sold cost
+Sale,2026-11-14,Rice ball,20,8.50,3.90,,,,,Unverified,Check cost before verifying,example-sale-1,
+Expense,2026-11-01,,,,,3600,Rent,2026-11-01,2026-11-30,Verified,Spread across the month,example-expense-1,
+Purchase,2026-11-14,Bottled drink,100,,2.90,,,,,Verified,Stock is not sold cost,example-purchase-1,
+Daily total,2026-11-15,,,,,1500,,,,Estimated,Only goods sold today,example-daily-1,900

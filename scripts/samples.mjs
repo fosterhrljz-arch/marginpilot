@@ -1,0 +1,15 @@
+import JSZip from 'jszip';
+import {writeFile,mkdir} from 'node:fs/promises';
+import {headers,templateRows,csvText} from '../src/import.mjs';
+export async function makeXlsx(rows,{shared=false,date1904=false,formula=false}={}){
+ const z=new JSZip(),escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+ z.file('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+(shared?'<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>':'')+'</Types>');
+ z.file('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+ z.file('xl/workbook.xml','<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr date1904="'+(date1904?'1':'0')+'"/><sheets><sheet name="Records" sheetId="1" r:id="rId1"/></sheets></workbook>');
+ z.file('xl/_rels/workbook.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+ const strings=[];
+ z.file('xl/worksheets/sheet1.xml',`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows.map((row,i)=>`<row r="${i+1}">${row.map((v,j)=>{const ref=String.fromCharCode(65+j)+(i+1);if(formula&&i===1&&j===4)return `<c r="${ref}"><f>1+1</f><v>2</v></c>`;if(shared){strings.push(String(v));return `<c r="${ref}" t="s"><v>${strings.length-1}</v></c>`;}return `<c r="${ref}" t="inlineStr"><is><t>${escape(v)}</t></is></c>`;}).join('')}</row>`).join('')}</sheetData></worksheet>`);
+ if(shared)z.file('xl/sharedStrings.xml','<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+strings.map(v=>'<si><t>'+escape(v)+'</t></si>').join('')+'</sst>');
+ return z.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
+}
+if(process.argv[1]?.endsWith('samples.mjs')){await mkdir('samples',{recursive:true});for(const lang of ['zh','en']){const rows=[headers(lang),...templateRows(lang)];await writeFile('samples/template-'+lang+'.csv',csvText(rows));await writeFile('samples/template-'+lang+'.xlsx',await makeXlsx(rows));}console.log('Bilingual CSV and XLSX examples written.');}

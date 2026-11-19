@@ -1,0 +1,26 @@
+{
+  "name": "marginpilot",
+  "version": "1.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:ui": "node tests/ui.mjs",
+    "package": "node scripts/package.mjs",
+    "test:patch": "node tests/v111-ui.mjs",
+    "test:recovery": "node tests/edge-cases.mjs",
+    "samples": "node scripts/samples.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "papaparse": "5.7.1",
+    "jszip": "3.10.2",
+    "lucide-react": "0.468.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "playwright": "1.65.0"
+  }
+}

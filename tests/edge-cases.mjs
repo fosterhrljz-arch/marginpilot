@@ -1,0 +1,30 @@
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {makeXlsx} from '../scripts/samples.mjs';
+import {headers} from '../src/import.mjs';
+import {emptyData} from '../src/core.mjs';
+const browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'chrome',headless:true});
+const url=pathToFileURL(resolve('release/MarginPilot.html')).href;
+const ctx=await browser.newContext({offline:true,viewport:{width:1280,height:900}}),p=await ctx.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
+const legacy={version:1,name:'Legacy shop',products:[{id:'p',name:'Milk',price:500,cost:300}],sales:[{id:'s',date:'2026-11-01',productId:'p',qty:20,price:500,unitCost:null,costStatus:'recorded',note:''}],expenses:[],purchases:[],confirmedDays:['2026-11-01']};
+const button=name=>p.getByRole('button',{name,exact:true}),nav=name=>p.getByRole('navigation').getByRole('button',{name,exact:true}),book=()=>p.evaluate(()=>JSON.parse(localStorage.getItem('marginpilot-v11-live')));
+async function range(a,b){await button('Custom').click();await p.getByLabel('Start date',{exact:true}).fill(a);await p.getByLabel('End date',{exact:true}).fill(b);await button('Apply dates').click();}
+async function check(){await button('Check dates & assumptions').click();await p.getByRole('checkbox').check();await button('Mark dates checked').click();}
+try{
+ await p.addInitScript(old=>{if(!localStorage.getItem('test-seeded')){localStorage.setItem('test-seeded','1');localStorage.setItem('marginpilot-mode-v1','live');localStorage.setItem('marginpilot-language','en');localStorage.setItem('marginpilot-v1-live',JSON.stringify(old));}},legacy);
+ await p.goto(url);assert.match(await p.locator('main').innerText(),/v1.0 records and amounts are preserved/);assert.equal(await p.evaluate(()=>localStorage.getItem('marginpilot-v11-live')),null);await range('2026-11-01','2026-11-01');await check();assert.deepEqual((await book()).confirmedDays,['2026-11-01']);assert.deepEqual(JSON.parse(await p.evaluate(()=>localStorage.getItem('marginpilot-v1-live'))),legacy);
+ await nav('Product profit').click();await button('Edit reference cost').click();await p.getByRole('dialog').locator('input[name=cost]').fill('4');await button('Save reference cost').click();assert.deepEqual((await book()).confirmedDays,[]);assert.equal((await book()).sales[0].unitCost,null);
+ // A failed disk write must retain both the draft and the previously saved state.
+ await nav('Add entry').click();await p.getByLabel('Date',{exact:true}).fill('2026-11-02');await p.locator('input[name=amount]').fill('100');await button('Enter costs now').click();await p.locator('input[name=cogs]').fill('60');const before=await book();await p.evaluate(()=>{const original=Storage.prototype.setItem;window.restoreStorage=()=>Storage.prototype.setItem=original;Storage.prototype.setItem=function(k,v){if(k.startsWith('marginpilot-v11-'))throw new DOMException('Quota exceeded','QuotaExceededError');return original.call(this,k,v);};});await button('Save entry').click();assert.match(await p.getByRole('status').innerText(),/could not be completed/);assert.equal(await p.locator('input[name=amount]').inputValue(),'100');assert.deepEqual(await book(),before);await p.evaluate(()=>window.restoreStorage());await button('Save entry').click();assert.equal((await book()).dailySales.length,1);
+ // The export carries user names and stable IDs unchanged; language doesn't translate financial data.
+ await nav('Data & backups').click();const row=['Sale','46329','Milk','1','5','3','','','','','Verified','','serial-date-1',''];const file=await makeXlsx([headers('en'),row]);await p.getByLabel('Import spreadsheet',{exact:true}).setInputFiles({name:'serial.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:file});await button('Import 1 entries').waitFor();await button('Import 1 entries').click();assert.match((await book()).sales.at(-1).date,/^2026-\d{2}-\d{2}$/);
+ for(const [name,buffer,pattern] of [['1904.xlsx',await makeXlsx([headers('en'),row],{date1904:true}),/1904/],['bad.xlsx',Buffer.from('not a zip'),/Cannot open Excel/]]){await p.getByLabel('Import spreadsheet',{exact:true}).setInputFiles({name,mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer});await p.getByRole('alert').waitFor();assert.match(await p.getByRole('alert').innerText(),pattern);}
+ // Another tab must not be silently overwritten.
+ await nav('Add entry').click();await p.getByLabel('Date',{exact:true}).fill('2026-11-10');await p.locator('input[name=amount]').fill('20');await button('Enter costs now').click();await p.locator('input[name=cogs]').fill('10');await p.evaluate(()=>{const key='marginpilot-v11-live',d=JSON.parse(localStorage.getItem(key));d.name='Changed in another window';localStorage.setItem(key,JSON.stringify(d));});await button('Save entry').click();assert.match(await p.getByRole('status').innerText(),/Another window/);assert.equal((await book()).name,'Changed in another window');assert.equal(await p.locator('input[name=amount]').inputValue(),'20');
+ // Corruption is surfaced and preserved; replacement is possible only through explicit restore.
+ await p.evaluate(()=>localStorage.setItem('marginpilot-v11-live','{broken'));await p.reload();assert.match(await p.locator('main').innerText(),/Writes are paused/);assert.equal(await p.evaluate(()=>localStorage.getItem('marginpilot-v11-live')),'{broken');await nav('Data & backups').click();await p.getByLabel('Restore backup',{exact:true}).setInputFiles({name:'recovery.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(emptyData('Recovered')))});await button('Replace current book').click();assert.equal((await book()).name,'Recovered');
+ assert.deepEqual(errors,[]);console.log('PASS: browser legacy migration, reference-cost recheck, failed-save draft retention, Excel serial dates and format errors, concurrent-write protection, and explicit corruption recovery.');
+}finally{await browser.close();}
+

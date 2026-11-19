@@ -1,0 +1,3 @@
+563d9adca8a8ede41d8acac8ca40351b60a20206b6476e16745849516a2a1a70  MarginPilot-v1.0.0.zip
+f9f134c9fc4819cb524ef3517bc422cb23fccabbeb87c569ecbfb86323749057  MarginPilot-v1.1.0.zip
+79efc9ac6ecdf9dcece7998667ccb04b1e3f71c2def60b4270d7d4bb277ebde7  MarginPilot-v1.1.1.zip
